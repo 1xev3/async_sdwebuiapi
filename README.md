@@ -1,4 +1,5 @@
 # sdwebuiapi
+Library sdwebuiapi with asynchronous support. 
 API client for AUTOMATIC1111/stable-diffusion-webui
 
 Supports txt2img, img2img, extra-single-image, extra-batch-images API calls.
@@ -35,7 +36,7 @@ api.set_auth('username', 'password')
 
 ## txt2img
 ```
-result1 = api.txt2img(prompt="cute squirrel",
+result1 = await api.txt2img(prompt="cute squirrel",
                     negative_prompt="ugly, out of frame",
                     seed=1003,
                     styles=["anime"],
@@ -62,7 +63,7 @@ result1.image
 
 ## img2img
 ```
-result2 = api.img2img(images=[result1.image], prompt="cute cat", seed=5555, cfg_scale=6.5, denoising_strength=0.6)
+result2 = await api.img2img(images=[result1.image], prompt="cute cat", seed=5555, cfg_scale=6.5, denoising_strength=0.6)
 result2.image
 ```
 ![img2img](https://user-images.githubusercontent.com/1288793/200459294-ab1127e5-04e5-47ac-82b2-2bbd0648402a.jpg)
@@ -82,7 +83,7 @@ mask
 ![mask](https://user-images.githubusercontent.com/1288793/200459372-7850c6b6-27c5-435a-93e2-8710948d316a.jpg)
 
 ```
-inpainting_result = api.img2img(images=[result2.image],
+inpainting_result = await api.img2img(images=[result2.image],
                                 mask_image=mask,
                                 inpainting_fill=1,
                                 prompt="cute cat",
@@ -95,7 +96,7 @@ inpainting_result.image
 
 ## extra-single-image
 ```
-result3 = api.extra_single_image(image=result2.image,
+result3 = await api.extra_single_image(image=result2.image,
                                  upscaler_1=webuiapi.Upscaler.ESRGAN_4x,
                                  upscaling_resize=1.5)
 print(result3.image.size)
@@ -107,7 +108,7 @@ result3.image
 
 ## extra-batch-images
 ```
-result4 = api.extra_batch_images(images=[result1.image, inpainting_result.image],
+result4 = await api.extra_batch_images(images=[result1.image, inpainting_result.image],
                                  upscaler_1=webuiapi.Upscaler.ESRGAN_4x,
                                  upscaling_resize=1.5)
 result4.images[0]
@@ -122,7 +123,7 @@ result4.images[1]
 ### Configuration APIs
 ```
 # return map of current options
-options = api.get_options()
+options = await api.get_options()
 
 # change sd model
 options = {}
@@ -133,16 +134,16 @@ api.set_options(options)
 # it makes webui unusable (2022/11/21).
 
 # get available sd models
-api.get_sd_models()
+await api.get_sd_models()
 
 # misc get apis
-api.get_samplers()
-api.get_cmd_flags()      
-api.get_hypernetworks()
-api.get_face_restorers()
-api.get_realesrgan_models()
-api.get_prompt_styles()
-api.get_artist_categories()
-api.get_artists()
+await api.get_samplers()
+await api.get_cmd_flags()      
+await api.get_hypernetworks()
+await api.get_face_restorers()
+await api.get_realesrgan_models()
+await api.get_prompt_styles()
+await api.get_artist_categories()
+await api.get_artists()
 
 ```
