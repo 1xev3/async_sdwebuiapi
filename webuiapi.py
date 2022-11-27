@@ -1,5 +1,7 @@
 import json
 import requests
+import asyncio
+import aiohttp
 import io
 import base64
 from PIL import Image
@@ -35,40 +37,61 @@ class WebUIApi:
         self.baseurl = baseurl
         self.default_sampler = sampler
         self.default_steps = steps
-        
-        self.session = requests.Session()
-        
-    def set_auth(self, username, password):
-        self.session.auth = (username, password)
-        
-    def _to_api_result(self, response):
-        
-        if response.status_code != 200:
-            raise RuntimeError(response.status_code, response.text)
+
+    async def _to_api_result(self, response, is_default=False):
+
+        if is_default:
+            if response.status_code != 200:
+                raise RuntimeError(response.status_code, response.text)
+                
+            r = response.json()
+            images = []
+            if 'images' in r.keys():
+                images = [Image.open(io.BytesIO(base64.b64decode(i))) for i in r['images']]
+            elif 'image' in r.keys():
+                images = [Image.open(io.BytesIO(base64.b64decode(r['image'])))]
             
-        r = response.json()
-        images = []
-        if 'images' in r.keys():
-            images = [Image.open(io.BytesIO(base64.b64decode(i))) for i in r['images']]
-        elif 'image' in r.keys():
-            images = [Image.open(io.BytesIO(base64.b64decode(r['image'])))]
-        
-        info = ''
-        if 'info' in r.keys():
-            try:
-                info = json.loads(r['info'])
-            except:
-                info = r['info']
-        elif 'html_info' in r.keys():
-            info = r['html_info']
+            info = ''
+            if 'info' in r.keys():
+                try:
+                    info = json.loads(r['info'])
+                except:
+                    info = r['info']
+            elif 'html_info' in r.keys():
+                info = r['html_info']
 
-        parameters = ''
-        if 'parameters' in r.keys():
-            parameters = r['parameters']
+            parameters = ''
+            if 'parameters' in r.keys():
+                parameters = r['parameters']
 
-        return WebUIApiResult(images, parameters, info)
+            return WebUIApiResult(images, parameters, info)
+        else:
+            if response.status != 200:
+                raise RuntimeError(response.status, response.text)
+            
+            r = await response.json()
+            images = []
+            if 'images' in r.keys():
+                images = [Image.open(io.BytesIO(base64.b64decode(i))) for i in r['images']]
+            elif 'image' in r.keys():
+                images = [Image.open(io.BytesIO(base64.b64decode(r['image'])))]
+            
+            info = ''
+            if 'info' in r.keys():
+                try:
+                    info = json.loads(r['info'])
+                except:
+                    info = r['info']
+            elif 'html_info' in r.keys():
+                info = r['html_info']
+
+            parameters = ''
+            if 'parameters' in r.keys():
+                parameters = r['parameters']
+
+            return WebUIApiResult(images, parameters, info)
     
-    def txt2img(self, 
+    async def txt2img(self, 
                 enable_hr=False,
                 denoising_strength=0.0,
                 firstphase_width=0,
@@ -131,11 +154,14 @@ class WebUIApi:
             "override_settings": override_settings,
             "sampler_index": sampler_index,
         }
-        response = self.session.post(url=f'{self.baseurl}/txt2img', json=payload)
-        return self._to_api_result(response)
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url=f'{self.baseurl}/txt2img', json=payload) as response:
+                return await self._to_api_result(response)
 
 
-    def img2img(self,
+
+    async def img2img(self,
                 images=[], # list of PIL Image
                 mask_image=None, # PIL Image mask
                 resize_mode=0,
@@ -211,11 +237,12 @@ class WebUIApi:
         }
         if mask_image is not None:
             payload['mask']= b64_img(mask_image)
-            
-        response = self.session.post(url=f'{self.baseurl}/img2img', json=payload)
-        return self._to_api_result(response)
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url=f'{self.baseurl}/img2img', json=payload) as response:
+                return await self._to_api_result(response)
 
-    def extra_single_image(self,
+    async def extra_single_image(self,
                            image, # PIL Image
                            resize_mode=0,
                            show_extras_results=True,
@@ -247,11 +274,11 @@ class WebUIApi:
             "upscale_first": upscale_first,
             "image": b64_img(image),
         }
-        
-        response = self.session.post(url=f'{self.baseurl}/extra-single-image', json=payload)
-        return self._to_api_result(response)
 
-    def extra_batch_images(self,
+        response = requests.post(url=f'{self.baseurl}/extra-single-image', json=payload)
+        return await self._to_api_result(response,True)
+
+    async def extra_batch_images(self,
                            images, # list of PIL images
                            name_list=None, # list of image names
                            resize_mode=0,
@@ -299,63 +326,83 @@ class WebUIApi:
             "imageList": image_list,
         }
         
-        response = self.session.post(url=f'{self.baseurl}/extra-batch-images', json=payload)
-        return self._to_api_result(response)
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url=f'{self.baseurl}/extra-batch-images', json=payload) as response:
+                return await self._to_api_result(response)
  
-    # XXX always return empty info (2022/11/14)
-    def png_info(self, image):
+    # XXX always return empty info (2022/11/08)
+    async def png_info(self, image):
         payload = {
             "image": b64_img(image),
         }
         
-        response = self.session.post(url=f'{self.baseurl}/png-info', json=payload)
-        return self._to_api_result(response)
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url=f'{self.baseurl}/png-info', json=payload) as response:
+                return await self._to_api_result(response)
 
-    # XXX always returns empty info (2022/11/14)
-    def interrogate(self, image):
+    # XXX always returns 500 internal server error (2022/11/08)
+    async def interrogate(self, image):
         payload = {
             "image": b64_img(image),
         }
         
-        response = self.session.post(url=f'{self.baseurl}/interrogate', json=payload)
-        return self._to_api_result(response)
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url=f'{self.baseurl}/interrogate', json=payload) as response:
+                return await self._to_api_result(response)
 
     def get_options(self):        
-        response = self.session.get(url=f'{self.baseurl}/options')
+        response = requests.get(url=f'{self.baseurl}/options')
         return response.json()
 
-    # working (2022/11/21)
-    def set_options(self, options):        
-        response = self.session.post(url=f'{self.baseurl}/options', json=options)
-        return response.json()
+    async def get_cmd_flags(self):
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url=f'{self.baseurl}/cmd-flags') as response:
+                return await response.json()
 
-    def get_cmd_flags(self):        
-        response = self.session.get(url=f'{self.baseurl}/cmd-flags')
-        return response.json()
-    def get_samplers(self):        
-        response = self.session.get(url=f'{self.baseurl}/samplers')
-        return response.json()
-    def get_sd_models(self):        
-        response = self.session.get(url=f'{self.baseurl}/sd-models')
-        return response.json()
-    def get_hypernetworks(self):        
-        response = self.session.get(url=f'{self.baseurl}/hypernetworks')
-        return response.json()
-    def get_face_restorers(self):        
-        response = self.session.get(url=f'{self.baseurl}/face-restorers')
-        return response.json()
-    def get_realesrgan_models(self):        
-        response = self.session.get(url=f'{self.baseurl}/realesrgan-models')
-        return response.json()
-    def get_prompt_styles(self):        
-        response = self.session.get(url=f'{self.baseurl}/prompt-styles')
-        return response.json()
-    def get_artist_categories(self):        
-        response = self.session.get(url=f'{self.baseurl}/artist-categories')
-        return response.json()
-    def get_artists(self):        
-        response = self.session.get(url=f'{self.baseurl}/artists')
-        return response.json()
+    async def get_samplers(self):   
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url=f'{self.baseurl}/samplers') as response:
+                return await response.json()     
+
+    async def get_sd_models(self):     
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url=f'{self.baseurl}/sd-models') as response:
+                return await response.json()      
+
+    async def get_hypernetworks(self):
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url=f'{self.baseurl}/hypernetworks') as response:
+                return await response.json()       
+
+    async def get_face_restorers(self):
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url=f'{self.baseurl}/face-restorers') as response:
+                return await response.json()    
+
+    async def get_realesrgan_models(self):
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url=f'{self.baseurl}/realesrgan-models') as response:
+                return await response.json()       
+
+    async def get_prompt_styles(self):
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url=f'{self.baseurl}/prompt-styles') as response:
+                return await response.json()              
+
+    async def get_artist_categories(self):
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url=f'{self.baseurl}/artist-categories') as response:
+                return await response.json()
+
+    async def get_artists(self):
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url=f'{self.baseurl}/artists') as response:
+                return await response.json()
+
+    async def get_progress(self):
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url=f'{self.baseurl}/progress') as response:
+                return await response.json()
 
 class Upscaler(str, Enum):    
     none = 'None'
